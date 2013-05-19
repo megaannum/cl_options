@@ -30,6 +30,7 @@ Some of the ideas initially came from looking at Scala's/PaulP's library in
 scala.tools.cmd but have morphed and the DSL aspects removed.
 
 Currently supports:
+
     Unary:  
         -flag
         help:
@@ -44,12 +45,17 @@ Currently supports:
             -P<file name:String=Outfile> : Some help message...
 
 TODO:
-  Get KeyValue option working
-  Create a Formatting Context for both help and error
-    this would unify the display or help and error messages.
-  FromString
-    Extends the Scala/PaulP FromString code
-  Create better documentation
-  Create some examples
+
+    Get KeyValue option working
+
+    Create a Formatting Context for both help and error
+        this would unify the display or help and error messages.
+
+    FromString
+        Extends the Scala/PaulP FromString code
+
+    Create better documentation
+
+    Create some examples
 
 
