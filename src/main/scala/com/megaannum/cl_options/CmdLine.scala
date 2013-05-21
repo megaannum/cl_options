@@ -769,11 +769,14 @@ case None => println("valdef=NONE")
     }
     class UnaryGen(unary: Unary, fmt: String) extends Gen(fmt) {
       def execute(): String = {
-        val opts = unary.allNames.foldLeft(""){(v,n) => 
+        val names = unary.allNames.foldLeft(""){(v,n) => 
                       val s = if (v.length == 0) v else v + " | "
                       s + n.prefix + n.tag
                    }
-        fmt.format(opts, unary.help)
+        fmt.format(names, unary.help) + 
+          unary.detailHelp.foldLeft("") { (v, dh) =>
+            if (v.length == 0) "TAB" + dh else v + "\n  " + "TAB" + dh
+          }
       }
     }
     class BinaryGen(binary: Binary, fmt: String) extends Gen(fmt) {
@@ -786,6 +789,9 @@ case None => println("valdef=NONE")
         val vname = binary.valueName
         val help = binary.help
         fmt.format(opts, vname, help) + 
+          binary.detailHelp.foldLeft("") { (v, dh) =>
+            if (v.length == 0) "TAB" + dh else v + "\n  " + "TAB" + dh
+          } +
           (binary.childOptionDefs.map{childOD =>
             (childOD match {
               case u: Unary => new UnaryGen(u, defaultUniaryFormat)
@@ -807,6 +813,9 @@ case None => println("valdef=NONE")
         val vname = prop.valueName
         val help = prop.help
         fmt.format(opts, vname, help) + 
+          prop.detailHelp.foldLeft("") { (v, dh) =>
+            if (v.length == 0) "TAB" + dh else v + "\n  " + "TAB" + dh
+          } +
           (prop.childOptionDefs.map{childOD =>
             (childOD match {
               case u: Unary => new UnaryGen(u, defaultUniaryFormat)
@@ -827,6 +836,9 @@ case None => println("valdef=NONE")
         val name = kvs.name
         val help = kvs.help
         fmt.format(opts, name, help) + 
+          kvs.detailHelp.foldLeft("") { (v, dh) =>
+            if (v.length == 0) "TAB" + dh else v + "\n  " + "TAB" + dh
+          } +
           (kvs.childOptionDefs.map{childOD =>
             (childOD match {
               case u: Unary => new UnaryGen(u, defaultUniaryFormat)
@@ -926,13 +938,32 @@ case None => println("valdef=NONE")
       def resolveOption(optDef: Option.Def): Unit 
     }
 
-    def apply(): Options = new Options
+    def apply(helplineOp: SOption[String],
+              detailHelp: List[String]): Options = new Options(helplineOp, 
+                                                               detailHelp)
+
+    def apply(helpline: String,
+              detailHelp: List[String]): Options = Options(Some(helpline), 
+                                                           detailHelp)
+
+    def apply(helpline: String): Options = Options(Some(helpline), Nil)
+
+    def apply(): Options = Options(None, Nil)
 
   }
 
-  class Options {
+  class Options(helplineOp: SOption[String], detailHelp: List[String]) {
 
     val help = Help()
+
+    this + help
+    helplineOp foreach { helpline => help + helpline }
+    // TODO detail help text
+    detailHelp foreach { helpline => help + helpline }
+
+
+    // XXXXXXX
+
     protected var _unary = List[Unary]()
     protected var _binary = List[Binary]()
     protected var _property = List[Property]()
@@ -1216,9 +1247,12 @@ println("main: TOP")
       val debug = new Debug
       val lang = new Lang
 
+/*
       val opts = Options()
       opts.help + "Usage: Options option*"
       opts + opts.help
+*/
+      val opts = Options("Usage: CmdLine options*")
       opts + debug
       opts + lang
 
