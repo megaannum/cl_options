@@ -1,5 +1,5 @@
 
-package com.megaannum.cl_options
+package com.megaannum.util
 
 import scala.collection.mutable.ListBuffer
 import scala.util.parsing.input._
