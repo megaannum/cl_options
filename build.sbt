@@ -1,4 +1,4 @@
-name := "PartitionSet"
+name := "CmdLineOptions"
 
 version := "1.0"
 

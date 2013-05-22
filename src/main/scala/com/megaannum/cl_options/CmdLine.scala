@@ -24,6 +24,7 @@ import scala.util.control.Breaks.{break, breakable}
   // KeyValues -p key0=value0 key1=value1 ...
  */
 object CmdLine {
+/*
   class DefinitionParser extends RegexParsers {
 
     override def skipWhitespace = false
@@ -50,6 +51,7 @@ object CmdLine {
     def name: Parser[String] = """\w+""".r ^^ { s => s }
     def spaces: Parser[String] = whiteSpace ^^ { s => s }
   }
+*/
 
   class LineParser(options: Options) extends RegexParsers {
     val debug = true
@@ -64,56 +66,56 @@ object CmdLine {
 
     def SPACE = ' '
     def EQUALS = '='
+    def COLON = ':'
 
     def load: Parser[Boolean] = opt(optionsOp) ^^ {
       case optionsOp => optionsOp match {
         case Some(value) => value
         case None => false
       }
-  /*
-      case optionsOp => optionsOp match {
-        case Some(optionsList) => optionsList
-        case None => Nil
-      }
-  */
     }
+
     def optionsOp: Parser[Boolean] = option~rep(spaces~>option) ^^ {
       case op~oplist =>
         oplist.foldLeft(op){(v,b) => v&&b}
-  /*
-        if (! op) return false
-        else for (op <- oplist) if (! op) return false
-        true
-  */
-  /*
-      case op~oplist => 
-        var optionList: List[Option.Value] = Nil
-        optionList = op :: optionList
-        for (op <- oplist) optionList = op :: optionList
-        optionList.reverse
-  */
     }
+
     def option: Parser[Boolean] = (binaryOrProperty | unaryOrKeyValue ) ^^ {
       case opval => opval
     }
 
-    // Unary -f or --flag
+    // Unary -f or --flag 
+    //    or -NS:f or --NS:flag
     // KeyValues -p key0=value0 key1=value1 ...
-    def unaryOrKeyValue: Parser[Boolean] = prefix~name~opt(keyvaluelistOp) ^^ { 
+    //    or -NS:p key0=value0 key1=value1 ...
+    def unaryOrKeyValue: Parser[Boolean] = prefix~opt(ns<~COLON)~name~opt(keyvaluelistOp) ^^ { 
+      case prefix~nsOp~name~keyvaluelistOp => keyvaluelistOp match {
+        case Some(keyvaluelist) => 
+          options.bindKeyValue(Option.Name(prefix, name), nsOp, keyvaluelist)
+        case None => Option.Value(prefix, name)
+          options.bindUnary(Option.Name(prefix, name), nsOp)
+      }
+/*
       case prefix~name~keyvaluelistOp => keyvaluelistOp match {
         case Some(keyvaluelist) => 
           options.bindKeyValue(Option.Name(prefix, name), keyvaluelist)
         case None => Option.Value(prefix, name)
           options.bindUnary(Option.Name(prefix, name))
       }
+*/
     }
 
     // Binary -v b, -v=b, --value b or --value=b
+    //   or -NS:v b, -NS:v=b, --NS:value b or --NS:value=b
     // Property -Dkey=value
-    def binaryOrProperty: Parser[Boolean] = prefix~name~(EQUALS~>value | spaces~>value) ^^ { 
-      // case prefix~name~value => Option.Value(prefix, name, value)
+    //    of -NS:Dkey=value
+    def binaryOrProperty: Parser[Boolean] = prefix~opt(ns<~COLON)~name~(EQUALS~>value | spaces~>value) ^^ { 
+      case prefix~nsOp~name~value => 
+        options.bindBinaryOrProperty(Option.Name(prefix, name), nsOp, value)
+/*
       case prefix~name~value => 
         options.bindBinaryOrProperty(Option.Name(prefix, name), value)
+*/
     }
 
     def keyvaluelistOp: Parser[List[Tuple2[String,String]]] = keyvalue~rep(spaces~>keyvalue) ^^ {
@@ -152,17 +154,11 @@ object CmdLine {
 
     def prefix: Parser[String] = ( "--" | "-" ) ^^ { s => s }
 
-    def name: Parser[String] = """\w+""".r ^^ { 
-      s => 
-      doDebug("name="+s)
-      s 
-    }
+    def ns: Parser[String] = """\w+(\.\w+)*""".r ^^ { s => s }
 
-    def value: Parser[String] = """\w+""".r ^^ { 
-      s => 
-      doDebug("value="+s)
-      s 
-    }
+    def name: Parser[String] = """\w+""".r ^^ { s => s }
+
+    def value: Parser[String] = """\w+""".r ^^ { s => s }
 
     // def spacesOp: Parser[String] = opt(spaces) ^^ { s => }
 
@@ -218,7 +214,7 @@ object CmdLine {
       var parentOptionsOp: SOption[Options] = None
       var childOptionDefs: List[Option.Def] = Nil
 
-      def provider: Options.Provider
+      def provider: Options.Provider.Instance
       def name: Name
       def aliases: List[Name]
       def allNames: List[Name] = name :: aliases
@@ -228,10 +224,10 @@ object CmdLine {
       def doMatch(other: Name): Boolean = 
         other == name || aliases.exists{ a => a == other }
 
-      def ++=(optDefs: List[Option.Def]): Unit = 
+      def ++= (optDefs: List[Option.Def]): Unit = 
         childOptionDefs = optDefs ::: childOptionDefs 
 
-      def +=(optDef: Option.Def): Unit = 
+      def += (optDef: Option.Def): Unit = 
         childOptionDefs = optDef :: childOptionDefs 
 
 
@@ -249,7 +245,7 @@ object CmdLine {
     // Option.Unary
     // -f or --flag
     object Unary {
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 help: String,
@@ -262,7 +258,7 @@ object CmdLine {
                                             flag)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String,
                 flag: Boolean) = new Unary(provider,  
@@ -271,7 +267,7 @@ object CmdLine {
                                            help,
                                            Nil,
                                            flag)
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String,
                 detailHelp: List[String],
@@ -282,7 +278,7 @@ object CmdLine {
                                            detailHelp,
                                            flag)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String,
                 flag: Boolean): Unary = Unary(provider,  
@@ -291,7 +287,7 @@ object CmdLine {
                                               Nil,
                                               flag)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String,
                 detailHelp: List[String],
@@ -307,7 +303,7 @@ object CmdLine {
                   detailHelp,
                   flag)
       }
-      // Unary -f or --flag
+      // Unary -f or --flag 
       class Parser extends RegexParsers {
 
         override def skipWhitespace = false
@@ -335,7 +331,7 @@ object CmdLine {
         def spaces: Parser[String] = whiteSpace ^^ { s => s }
       }
     }
-    class Unary(val provider: Options.Provider,
+    class Unary(val provider: Options.Provider.Instance,
                 val name: Name, 
                 val aliases: List[Name], 
                 val help: String,
@@ -346,7 +342,7 @@ object CmdLine {
     // Option.Binary
     // -v b, -v=b, --value b or --value=b
     object Binary {
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 valDefOp: SOption[ValueDef],
@@ -360,7 +356,7 @@ object CmdLine {
                    detailHelp)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 valDef: ValueDef,
@@ -372,7 +368,7 @@ object CmdLine {
                help,
                Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 valDef: ValueDef,
@@ -386,7 +382,7 @@ object CmdLine {
                detailHelp)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 help: String): Binary = 
@@ -397,7 +393,7 @@ object CmdLine {
                    help,
                    Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 aliases: List[Name], 
                 help: String,
@@ -409,7 +405,7 @@ object CmdLine {
                    help,
                    detailHelp)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDefOp: SOption[ValueDef],
                 help: String): Binary = 
@@ -420,7 +416,7 @@ object CmdLine {
                    help,
                    Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDefOp: SOption[ValueDef],
                 help: String,
@@ -433,7 +429,7 @@ object CmdLine {
                    detailHelp)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String): Binary = 
         Binary(provider,  
@@ -443,7 +439,7 @@ object CmdLine {
                help,
                Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String,
                 detailHelp: List[String]): Binary = 
@@ -455,7 +451,7 @@ object CmdLine {
                detailHelp)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDef: ValueDef,
                 help: String): Binary = 
@@ -466,7 +462,7 @@ object CmdLine {
                    help,
                    Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDef: ValueDef,
                 help: String,
@@ -478,14 +474,14 @@ object CmdLine {
                    help,
                    detailHelp)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String): Binary =  Binary(provider,  
                                                 str, 
                                                 help,
                                                 Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String,
                 detailHelp: List[String]): Binary =  {
@@ -562,7 +558,7 @@ case None => println("valdef=NONE")
         def spaces: Parser[String] = whiteSpace ^^ { s => s }
       }
     }
-    class Binary(val provider: Options.Provider,
+    class Binary(val provider: Options.Provider.Instance,
                  val name: Name, 
                  val aliases: List[Name], 
                  val valDefOp: SOption[ValueDef],
@@ -582,7 +578,7 @@ case None => println("valdef=NONE")
     // Option.Property
     // arguments (-Dkey=value)
     object Property {
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDefOp: SOption[ValueDef],
                 help: String,
@@ -593,7 +589,7 @@ case None => println("valdef=NONE")
                      help,
                      detailHelp)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 valDefOp: SOption[ValueDef],
                 help: String) : Property = Property(provider,
@@ -604,7 +600,7 @@ case None => println("valdef=NONE")
 
   /*
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String): Property = 
         Property(provider,  
@@ -613,7 +609,7 @@ case None => println("valdef=NONE")
                  None)
 
       // helper
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 name: Name, 
                 help: String,
                 keyValuePair: T): Property = 
@@ -624,14 +620,14 @@ case None => println("valdef=NONE")
   */
 
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String): Property = Property(provider,
                                                    str,
                                                    help,
                                                    Nil)
 
-      def apply(provider: Options.Provider,
+      def apply(provider: Options.Provider.Instance,
                 str: String, 
                 help: String,
                 detailHelp: List[String]): Property = {
@@ -703,7 +699,7 @@ case None => println("valdef=NONE")
         def spaces: Parser[String] = whiteSpace ^^ { s => s }
       }
     }
-    class Property(val provider: Options.Provider,
+    class Property(val provider: Options.Provider.Instance,
                    val name: Name, 
                    val valDefOp: SOption[ValueDef],
                    val help: String,
@@ -721,7 +717,7 @@ case None => println("valdef=NONE")
     // -p key0=value0 key1=value1 ...
     object KeyValues {
     }
-    class KeyValues(val provider: Options.Provider,
+    class KeyValues(val provider: Options.Provider.Instance,
               val name: Name, 
               val aliases: List[Name], 
               val help: String,
@@ -859,7 +855,7 @@ case None => println("valdef=NONE")
     val defaultPropertyFormat = "  %s<%s> :%s"
     val defaultKeyValuesFormat = "  %s <%s> :%s"
   }
-  class Help extends Options.Provider {
+  class Help extends Options.Provider.Self {
     import Help._
 
     protected var _help = new ListBuffer[Help.Gen]
@@ -885,10 +881,10 @@ case None => println("valdef=NONE")
     def addHelp(gen: Help.Gen): Unit = _help += gen
     def help(str: String): Unit = 
       addHelp(new Help.StrGen(str, defaultStrFormat))
-    def +(str: String): Unit = help(str)
+    def += (str: String): Unit = help(str)
     def heading(str: String): Unit = 
       addHelp(new HeaderGen(str, defaultHeaderFormat))
-    def +(optDef: Option.Def): Unit = optDef match {
+    def += (optDef: Option.Def): Unit = optDef match {
       case u: Unary => addHelp(new UnaryGen(u, defaultUniaryFormat))
       case b: Binary => addHelp(new BinaryGen(b, defaultBinaryFormat))
       case p: Property => addHelp(new PropertyGen(p, defaultPropertyFormat))
@@ -898,7 +894,9 @@ case None => println("valdef=NONE")
     protected def addDef(optDef: Option.Def): Unit = 
       addHelp(new DefGen(optDef, defaultDefFormat))
 
-    def optDefs: List[Option.Def] = {
+    def namespaceOption: String = "Help"
+
+    def defsOption: List[Option.Def] = {
       List(Unary(this,
                  "--help -h", 
                  "Show help message", 
@@ -921,10 +919,44 @@ case None => println("valdef=NONE")
 
 
   object Options {
-    trait Provider {
+
+    object Provider {
+    
+      trait Self {
+        def namespaceOption: String
+        def defsOption: List[CmdLine.Option.Def]
+        def bindOption(optDef: CmdLine.Option.Def,
+                       valueOp: Option[String]): Boolean
+        def resolveOption(optDef: CmdLine.Option.Def): Unit
+      }
+      trait Instance {
+        def namespace: String
+        def defs: List[CmdLine.Option.Def]
+        def bind(optDef: CmdLine.Option.Def, valueOp: Option[String]): Boolean
+        def resolve(optDef: CmdLine.Option.Def): Unit
+      }
+      trait Owner {
+        def provider: Provider.Instance
+      }
+      implicit def selfToInstance(ps: Provider.Self): Provider.Instance =
+        new Instance {
+          def namespace: String = ps.namespaceOption
+          def defs: List[CmdLine.Option.Def] = ps.defsOption
+          def bind(optDef: CmdLine.Option.Def, 
+                   valueOp: Option[String]): Boolean = ps.bindOption(optDef, valueOp)
+          def resolve(optDef: CmdLine.Option.Def): Unit = ps.resolveOption(optDef)
+        }
+    }
+
+
+    trait XProvider {
+      /** The namespace of the Provider.
+       */
+      def namespaceOption: String
+
       /** The Provider adds its Option's to the Options object.
        */
-      def optDefs: List[Option.Def]
+      def defsOption: List[Option.Def]
 
       /** The Provider sets its local state based upon the option and
        * value. All Provider's bind methods are called for each of its
@@ -954,9 +986,13 @@ case None => println("valdef=NONE")
 
   class Options(helplineOp: SOption[String], detailHelp: List[String]) {
 
+    protected var _unary = List[Unary]()
+    protected var _binary = List[Binary]()
+    protected var _property = List[Property]()
+
     val help = Help()
 
-    this + help
+    this += help
     helplineOp foreach { helpline => help + helpline }
     // TODO detail help text
     detailHelp foreach { helpline => help + helpline }
@@ -964,9 +1000,6 @@ case None => println("valdef=NONE")
 
     // XXXXXXX
 
-    protected var _unary = List[Unary]()
-    protected var _binary = List[Binary]()
-    protected var _property = List[Property]()
 
     lazy val unary = _unary.distinct
     lazy val binary = _binary.distinct
@@ -974,8 +1007,12 @@ case None => println("valdef=NONE")
 
     def error(optDef: Option.Def, msg: String): Unit = help.error(optDef, msg)
 
-    def +(provider: Options.Provider): Unit = this + provider.optDefs
-    def +(optDefs: List[Option.Def]): Unit = 
+    def += (provider: Options.Provider.Instance): Unit = 
+      this += provider.defs
+    def += (provider: Options.Provider.Owner): Unit = 
+      this += provider.provider.defs
+
+    def += (optDefs: List[Option.Def]): Unit = 
       for (optDef <- optDefs) optDef match {
         case u: Unary => addUnary(u)
         case b: Binary => addBinary(b)
@@ -988,92 +1025,142 @@ case None => println("valdef=NONE")
     def addUnary(unary: Unary): Unit = {
       unary.parentOptionsOp = Some(this)
       _unary +:= unary
-      help + unary
+      help += unary
     }
     def addBinary(binary: Binary): Unit = {
       binary.parentOptionsOp = Some(this)
       _binary +:= binary
-      help + binary
+      help += binary
     }
     def addProperty(property: Property): Unit = {
       property.parentOptionsOp = Some(this)
       _property +:= property
-      help + property
+      help += property
     }
 
 
-    def parse(args: Array[String]): Boolean = {
-  println("Options.parser: TOP")
+    def bind(args: Array[String]): Boolean = {
+println("Options.bind: TOP")
       val pp = new LineParser(this)
       val r = pp.parseAll(pp.load, args.mkString(" "))
-  println("Options.parser: BOTTOM")
+      errors
+println("Options.bind: BOTTOM")
       r.get
     }
 
-    def bindUnary(name: Name): Boolean = {
-  println("Options.bindUnary: name=" + name)
+    def bindUnary(name: Name, nsOp: SOption[String]): Boolean = {
+println("Options.bindUnary: name=" + name + ", nsOp=" + nsOp)
       // try unary options
       for (unaryOptDef <- unary;
            optname <- unaryOptDef.allNames;
            if optname == name) {
-  println("Options.bindUnary: name="+name)
-          if (unaryOptDef.provider.bindOption(unaryOptDef, None))
-            return true
+// println("Options.bindUnary: name="+name)
+          nsOp match {
+            case Some(ns) =>
+              if (unaryOptDef.provider.namespace == ns &&
+                  unaryOptDef.provider.bind(unaryOptDef, None))
+                return true
+            case None =>
+              if (unaryOptDef.provider.bind(unaryOptDef, None))
+                return true
+          }
       }
       // try unary option child options (if any)
       for (unaryOptDef <- unary;
            childOptDef <- unaryOptDef.childOptionDefs;
            optname <- childOptDef.allNames;
            if optname == name) {
-  println("Options.bindUnary: name="+name)
-          if (childOptDef.provider.bindOption(childOptDef, None))
-            return true
+// println("Options.bindUnary: name="+name)
+          nsOp match {
+            case Some(ns) =>
+              if (childOptDef.provider.namespace == ns &&
+                  childOptDef.provider.bind(childOptDef, None))
+                return true
+            case None =>
+              if (childOptDef.provider.bind(childOptDef, None))
+                return true
+          }
       }
-      // TODO report bind error
-      help.error("Failed to find binding for Unary Option: " +name) 
+      nsOp match {
+        case Some(ns) =>
+          help.error("Failed to find binding for Unary Option: " +ns+':'+name) 
+        case None =>
+          help.error("Failed to find binding for Unary Option: " +name) 
+      }
       return false
     }
 
-    def bindBinaryOrProperty(name: Name, value: String): Boolean = {
-  println("Options.bindBinaryOrProperty: name=" + name)
+    def bindBinaryOrProperty(name: Name, 
+                             nsOp: SOption[String], 
+                             value: String): Boolean = {
+println("Options.bindBinaryOrProperty: name=" + name+ ", nsOp=" + nsOp)
       // try binary options
       for (binaryOptDef <- binary;
            optname <- binaryOptDef.allNames;
            if optname == name) {
-  println("Options.bindBinaryOrProperty: name="+name)
-          if (binaryOptDef.provider.bindOption(binaryOptDef, Some(value)))
+//println("Options.bindBinaryOrProperty: name="+name)
+/*
+          if (binaryOptDef.provider.bind(binaryOptDef, Some(value)))
             return true
+*/
+          nsOp match {
+            case Some(ns) =>
+              if (binaryOptDef.provider.namespace == ns &&
+                  binaryOptDef.provider.bind(binaryOptDef, Some(value)))
+                return true
+            case None =>
+              if (binaryOptDef.provider.bind(binaryOptDef, Some(value)))
+                return true
+          }
       }
       // try binary option child options (if any)
       for (binaryOptDef <- binary;
            childOptDef <- binaryOptDef.childOptionDefs;
            optname <- childOptDef.allNames;
            if optname == name) {
-  println("Options.bindBinaryOrProperty: name="+name)
+// println("Options.bindBinaryOrProperty: name="+name)
+/*
           if (childOptDef.provider.bindOption(childOptDef, Some(value)))
             return true
+*/
+          nsOp match {
+            case Some(ns) =>
+              if (childOptDef.provider.namespace == ns &&
+                  childOptDef.provider.bind(childOptDef, Some(value)))
+                return true
+            case None =>
+              if (childOptDef.provider.bind(childOptDef, Some(value)))
+                return true
+          }
       }
       // TODO
       // try property options
       // try property option child options (if any)
 
-      // TODO report bind error
-      help.error("Failed to find binding for Binary/Property Option: " +name) 
+      nsOp match {
+        case Some(ns) =>
+          help.error("Failed to find binding for Binary/Property Option: " +ns+':'+name) 
+        case None =>
+          help.error("Failed to find binding for Binary/Property Option: " +name) 
+      }
       return false
     }
 
     // TODO
-    def bindKeyValue(name: Name, keyvaluelist: List[Tuple2[String,String]]): Boolean = {
+    def bindKeyValue(name: Name, 
+                     nsOp: SOption[String], 
+                     keyvaluelist: List[Tuple2[String,String]]): Boolean = {
       // TODO report bind error
       help.error("Failed to find binding for KeyValue Option: " +name) 
       return false
     }
 
     def resolve: Unit = {
-      for (optDef <- all) optDef.provider.resolveOption(optDef)
+      for (optDef <- all) optDef.provider.resolve(optDef)
       for (optDef <- all; childOptDef <- optDef.childOptionDefs)
-        childOptDef.provider.resolveOption(childOptDef)
+        childOptDef.provider.resolve(childOptDef)
     }
+
     def errors: Unit = help.handleErrors
   }
 
@@ -1088,7 +1175,7 @@ case None => println("valdef=NONE")
 println("main: TOP")
       import Options._
 
-      class Debug extends Provider {
+      class Debug extends Provider.Self {
         private var level = 0
         private var filename = "OUT.debug"
 
@@ -1097,7 +1184,9 @@ println("main: TOP")
         def print(level: Int, msg: String): Unit = 
           if (isEnabled(level)) print(msg)
 
-        def optDefs: List[Option.Def] = {
+        def namespaceOption: String = "Debug"
+
+        def defsOption: List[Option.Def] = {
           List(Binary(this, 
                       "--debug_level --debug -d <level:Int=0>", 
                       "Set debugging level"),
@@ -1128,12 +1217,14 @@ println("main: TOP")
       }
 
       object Lang {
-        abstract class Kind(val name: String) extends Provider
+        abstract class Kind(val name: String) extends Provider.Self
 
         class C extends Kind("C") {
           var functionNameOp: SOption[String] = None
 
-          def optDefs: List[Option.Def] = {
+          def namespaceOption: String = "C"
+
+          def defsOption: List[Option.Def] = {
             List(Binary(this, 
                         "--function_name --func_name -fn <Function Name>", 
                         "Name of function"))
@@ -1160,7 +1251,9 @@ println("main: TOP")
           var functionNameOp: SOption[String] = None
           var objectNameOp: SOption[String] = None
 
-          def optDefs: List[Option.Def] = {
+          def namespaceOption: String = "Scala"
+
+          def defsOption: List[Option.Def] = {
             List(Binary(this, 
                      "--function_name --func_name -fn <Function Name>",
                      "Name of function"),
@@ -1202,10 +1295,55 @@ println("main: TOP")
           }
         }
       }
-      class Lang extends Provider {
+      class Lang extends Provider.Owner {
         private var kindOp: Option[Lang.Kind] = None
+        val provider: Provider.Instance = new Provider.Instance {
+          def namespace: String = "Lang"
 
-        def optDefs: List[Option.Def] = {
+          def defs: List[Option.Def] =
+            List(Binary(this, 
+                        "--language --lang -l <Programming Language=Scala>", 
+                        "Which langage to support: C or Scala")
+            )
+
+          def bind(optDef: Option.Def, valueOp: SOption[String]): Boolean = {
+println("Lang.bindOption: TOP")
+              valueOp match {
+                case Some(str) => 
+println("Lang.bindOption: str="+str)
+                  str match  {
+                    case "C" => 
+                      val l = new Lang.C
+                      optDef ++= l.defsOption
+                      Lang.this.kindOp = Some(new Lang.C)
+                      true
+                    case "Scala" => 
+                      val l = new Lang.Scala
+                      optDef ++= l.defsOption
+                      Lang.this.kindOp = Some(new Lang.C)
+                      true
+                    case _ =>
+                      optDef.error("Unknown language name: " + str)
+                      false
+                  }
+                case None => optDef.error("Lang requires name"); false
+            }
+          }
+          def resolve(optDef: Option.Def): Unit = {
+println("Lang.resolveOption: TOP")
+            Lang.this.kindOp match {
+              case Some(kind) => // Ok
+              case None => // Error
+                optDef.error("Language kind not set.")
+            }
+          }
+        }
+
+
+/*
+        def namespaceOption: String = "Lang"
+
+        def defsOption: List[Option.Def] = {
           List(Binary(this, 
                       "--language --lang -l <Programming Language=Scala>", 
                       "Which langage to support: C or Scala")
@@ -1219,12 +1357,12 @@ println("main: TOP")
                 str match  {
                   case "C" => 
                     val l = new Lang.C
-                    optDef ++= l.optDefs
+                    optDef ++= l.defsOption
                     this.kindOp = Some(new Lang.C)
                     true
                   case "Scala" => 
                     val l = new Lang.Scala
-                    optDef ++= l.optDefs
+                    optDef ++= l.defsOption
                     this.kindOp = Some(new Lang.C)
                     true
                   case _ =>
@@ -1242,6 +1380,7 @@ println("main: TOP")
               optDef.error("Language kind not set.")
           }
         }
+*/
       }
 
       val debug = new Debug
@@ -1253,23 +1392,13 @@ println("main: TOP")
       opts + opts.help
 */
       val opts = Options("Usage: CmdLine options*")
-      opts + debug
-      opts + lang
+      opts += debug
+      opts += lang
 
-  /*
-      val optionValues = opts.parse(args)
-  println("main: optionValues=" + optionValues.mkString(" "))
-      opts.bind(optionValues)
-      opts.errors
-      opts.resolve(optionValues)
-      opts.errors
-  */
-      if (opts.parse(args)) {
-        println("Success")
-        opts.resolve
-        opts.errors
-      } else opts.errors
 
-  println("main: BOTTOM")
+      opts bind args
+      opts resolve
+
+println("main: BOTTOM")
     }
 }
