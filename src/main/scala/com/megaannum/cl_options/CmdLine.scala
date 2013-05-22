@@ -993,9 +993,9 @@ case None => println("valdef=NONE")
     val help = Help()
 
     this += help
-    helplineOp foreach { helpline => help + helpline }
+    helplineOp foreach { helpline => help += helpline }
     // TODO detail help text
-    detailHelp foreach { helpline => help + helpline }
+    detailHelp foreach { helpline => help += helpline }
 
 
     // XXXXXXX
@@ -1386,11 +1386,6 @@ println("Lang.resolveOption: TOP")
       val debug = new Debug
       val lang = new Lang
 
-/*
-      val opts = Options()
-      opts.help + "Usage: Options option*"
-      opts + opts.help
-*/
       val opts = Options("Usage: CmdLine options*")
       opts += debug
       opts += lang
